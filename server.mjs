@@ -185,3 +185,9 @@ app.use(express.json())
 app.listen(PORT, () => {
   console.log(`server is running on port ${PORT}`);
 });
+
+// Moving to the deployment, we use Ngrok for temporary purposes and faster testing. 
+// Ngrok is a cross-platform application that exposes local server ports to the Internet.
+// When building an Alexa skill, the core logic of your code is exposed as a Rest API running on your local computer, and you can expose it to Alexa system via ngrok. Alexa requires https URL endpoint with a proper SSL certificate, and ngrok offers that.
+// https://medium.com/@danielconde9/alexa-go-local-a3311ffe634d
+// ngrok http 5000
