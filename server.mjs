@@ -12,7 +12,8 @@ import { ExpressAdapter } from 'ask-sdk-express-adapter';
 
 // Next, We integrate the database
 import mongoose from 'mongoose';
-mongoose.connect('mongodb+srv://dbUser:dbPass@cluster0.7bnpj.mongodb.net/lib-users?retryWrites=true&w=majority');
+// pasting the cluster's connection string/ URI and connecting to DB:
+mongoose.connect('mongodb+srv://dbUser:<password>@cluster0.7bnpj.mongodb.net/<DatabaseName>?retryWrites=true&w=majority');
 
 // Creating a prototype object which will be passed on to DB on each session created. Here the parameters are skill name, user name & session time
 const Usage = mongoose.model('Usage', {
@@ -65,7 +66,7 @@ const LaunchRequestHandler = {
   }
 };
 
-const introHandler = {
+  const introHandler = {
     canHandle(handlerInput) {
         return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
         && Alexa.getIntentName(handlerInput.requestEnvelope) === 'intro';
@@ -81,10 +82,93 @@ const introHandler = {
     }
   }
 
+  // Here we develop a tracking handler that outputs the Device & User ID. This functionality is usable in case a user is placing order, purchasing an e-service or a subscription
+  const deviceIdHandler = {
+    canHandle(handlerInput) {
+      return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+        && Alexa.getIntentName(handlerInput.requestEnvelope) === 'deviceId';
+    },
+    handle(handlerInput) {
+  
+      let deviceId = Alexa.getDeviceId(handlerInput.requestEnvelope)
+      let userId = Alexa.getUserId(handlerInput.requestEnvelope)
+  
+      console.log("deviceId: ", deviceId); 
+      const speakOutput = `your device id is: ${deviceId} \n\n\nand your user id is: ${userId}`
+  
+      return handlerInput.responseBuilder
+        .speak(speakOutput)
+        .reprompt(speakOutput)
+        .getResponse();
+    }
+  };
+  
+
+  // After that, in the food ordering app scenario a crucial requirement is the user email. In order to fetch that, we create another handler:
+  
+  const EmailIntentHandler = {
+    canHandle(handlerInput) {
+      return handlerInput.requestEnvelope.request.type === 'IntentRequest'
+        && handlerInput.requestEnvelope.request.intent.name === 'EmailIntent';
+    },
+    async handle(handlerInput) {
+      const { serviceClientFactory, responseBuilder } = handlerInput;
+  
+      const apiAccessToken = Alexa.getApiAccessToken(handlerInput.requestEnvelope)
+      console.log("apiAccessToken: ", apiAccessToken);
+  
+      try {
+        // https://developer.amazon.com/en-US/docs/alexa/custom-skills/request-customer-contact-information-for-use-in-your-skill.html#get-customer-contact-information
+  
+        const responseArray = await Promise.all([
+          axios.get("https://api.amazonalexa.com/v2/accounts/~current/settings/Profile.email",
+            { headers: { Authorization: `Bearer ${apiAccessToken}` } },
+          ),
+          axios.get("https://api.amazonalexa.com/v2/accounts/~current/settings/Profile.name",
+            { headers: { Authorization: `Bearer ${apiAccessToken}` } },
+          ),
+        ])
+  
+        const email = responseArray[0].data;
+        const name = responseArray[1].data;
+        console.log("email: ", email);
+  
+        if (!email) {
+          return handlerInput.responseBuilder
+            .speak(`looks like you dont have an email associated with this device, please set your email in Alexa App Settings`)
+            .getResponse();
+        }
+        return handlerInput.responseBuilder
+          .speak(`Dear ${name}, your email is: ${email}`)
+          .getResponse();
+  
+      } catch (error) {
+        console.log("error code: ", error.response.status);
+  
+        if (error.response.status === 403) {
+          return responseBuilder
+            .speak('I\'m unable to get your email. Kindly look into this skill in your Alexa app and grant profile permissions to this skill')
+            .withAskForPermissionsConsentCard(["alexa::profile:email:read"]) // https://developer.amazon.com/en-US/docs/alexa/custom-skills/request-customer-contact-information-for-use-in-your-skill.html#sample-response-with-permissions-card
+            .getResponse();
+        }
+        return responseBuilder
+          .speak('Uh Oh. Looks like something went wrong.')
+          .getResponse();
+      }
+    }
+  }
+  
+  // Next, we can develop another type of handlers like placeOrder, askMyOrder, askOrderStatus for a sample food ordering app respectively. We can develop handlers for any kind of functionality
+  // Handlers:...
+
+
+
 const skillBuilder = SkillBuilders.custom()
   .addRequestHandlers(
     LaunchRequestHandler,
     introHandler,
+    deviceIdHandler,
+    EmailIntentHandler
   )
   .addErrorHandlers(
     ErrorHandler
